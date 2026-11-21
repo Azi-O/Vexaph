@@ -3,13 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "interface/uci.h"
+#include "brain/nnue.h"
 #include "platform/platform.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#elif defined(__wasm__)
+#define EMSCRIPTEN_KEEPALIVE __attribute__((visibility("default")))
 #else
 #ifndef VEXAPH_WASM_API_CHECK
-#error "wasm_api.c is built only with Emscripten (or -DVEXAPH_WASM_API_CHECK for a native syntax check)"
+#error "wasm_api.c is built only for wasm (or -DVEXAPH_WASM_API_CHECK for a native syntax check)"
 #endif
 #define EMSCRIPTEN_KEEPALIVE
 #endif
@@ -138,7 +141,7 @@ EMSCRIPTEN_KEEPALIVE const char *wasm_legal_moves(void) {
     move_to_uci(moves[i], u);
     o += snprintf(g_out + o, sizeof(g_out) - (size_t)o, "%s\"%s\"", i ? "," : "", u);
   }
-  snprintf(g_out + o, sizeof(g_out) - (size_t)o, "],\"status\":\"%s\"}", game_status());
+  snprintf(g_out + o, sizeof(g_out) - (size_t)o, "],\"status\":\"%s\",\"in_check\":%s}", game_status(), in_check(&g_board) ? "true" : "false");
   return g_out;
 }
 
@@ -340,4 +343,48 @@ EMSCRIPTEN_KEEPALIVE const char *wasm_eval(void) {
   snprintf(g_out, sizeof(g_out), "{\"score\":%d,\"score_white\":%d,\"side\":\"%c\",\"pawn_mg\":%d,\"pawn_eg\":%d,\"fen\":\"%s\"}",
     tr.score, g_board.side == WHITE ? tr.score : -tr.score, g_board.side == WHITE ? 'w' : 'b', tr.pawn_mg, tr.pawn_eg, fen);
   return g_out;
+}
+
+EMSCRIPTEN_KEEPALIVE const char *wasm_load_nnue(const char *path) {
+  ensure_ready();
+  char err[512];
+  err[0] = 0;
+  bool ok = nnue_load(path, err, sizeof(err));
+  char e[1100];
+  jesc(e, sizeof(e), err);
+  snprintf(g_out, sizeof(g_out), "{\"ok\":%s,\"loaded\":%s,\"active\":%s,\"simd\":\"%s\",\"error\":\"%s\"}",
+    ok ? "true" : "false", nnue_loaded() ? "true" : "false", nnue_active() ? "true" : "false", nnue_simd_name(), e);
+  return g_out;
+}
+
+EMSCRIPTEN_KEEPALIVE const char *wasm_nnue_status(void) {
+  char e[1100];
+  jesc(e, sizeof(e), nnue_loaded() ? nnue_loaded_path() : "");
+  snprintf(g_out, sizeof(g_out), "{\"loaded\":%s,\"active\":%s,\"simd\":\"%s\",\"path\":\"%s\"}",
+    nnue_loaded() ? "true" : "false", nnue_active() ? "true" : "false", nnue_simd_name(), e);
+  return g_out;
+}
+
+static UciEngine *g_uci;
+static char g_uci_out[OUT_CAP];
+static size_t g_uci_len;
+
+static void uci_sink(const char *line, void *ud) {
+  (void)ud;
+  size_t n = strlen(line);
+  if (g_uci_len + n + 2 >= sizeof(g_uci_out)) return;
+  memcpy(g_uci_out + g_uci_len, line, n);
+  g_uci_len += n;
+  g_uci_out[g_uci_len++] = '\n';
+  g_uci_out[g_uci_len] = 0;
+}
+
+EMSCRIPTEN_KEEPALIVE const char *wasm_uci(const char *line) {
+  if (!g_uci) g_uci = uci_create(uci_sink, NULL, &g_stop);
+  g_uci_len = 0;
+  g_uci_out[0] = 0;
+  g_stop = 0;
+  uci_handle_line(g_uci, line);
+  g_stop = 0;
+  return g_uci_out;
 }

@@ -9,7 +9,7 @@
 #include "brain/see.h"
 #include "core/movegen.h"
 #include "platform/platform.h"
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__wasm__)
 #include <pthread.h>
 #define VEXAPH_SMP 1
 #endif
