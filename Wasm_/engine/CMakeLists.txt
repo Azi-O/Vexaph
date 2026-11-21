@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.10)
+project(Vexaph C)
+set(CMAKE_C_STANDARD 11)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+set(CMAKE_C_FLAGS_RELEASE "-O3")
+set(VEXAPH_ARCH "native" CACHE STRING "Value for -march (use generic to omit)")
+if(NOT VEXAPH_ARCH STREQUAL "generic" AND NOT MSVC)
+  add_compile_options(-march=${VEXAPH_ARCH})
+endif()
+option(VEXAPH_FIX_FWD_EQ "Compute king shelter forward masks at init (differs from the JS reference)" OFF)
+
+file(GLOB CORE_SRC src/core/*.c)
+file(GLOB BRAIN_SRC src/brain/*.c)
+file(GLOB BOOK_SRC src/book/*.c)
+set(ENGINE_SRC ${CORE_SRC} ${BRAIN_SRC} ${BOOK_SRC} src/platform/platform.c src/interface/uci.c)
+
+add_library(vexaph_engine STATIC ${ENGINE_SRC})
+target_include_directories(vexaph_engine PUBLIC include)
+find_package(Threads REQUIRED)
+target_link_libraries(vexaph_engine PUBLIC m Threads::Threads)
+if(VEXAPH_FIX_FWD_EQ)
+  target_compile_definitions(vexaph_engine PUBLIC VEXAPH_FIX_FWD_EQ)
+endif()
+
+add_executable(vexaph src/main.c)
+configure_file(${CMAKE_SOURCE_DIR}/nn-190f102a22c3.nnue ${CMAKE_BINARY_DIR}/nn-190f102a22c3.nnue COPYONLY)
+target_link_libraries(vexaph vexaph_engine)
+
+add_executable(unit_test tests/test_main.c)
+target_link_libraries(unit_test vexaph_engine)
+add_executable(perft_test tests/perft_main.c)
+target_link_libraries(perft_test vexaph_engine)
+add_executable(bench_time tools/bench_time.c)
+target_link_libraries(bench_time vexaph_engine)
+
+add_custom_command(TARGET vexaph POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data ${CMAKE_BINARY_DIR}/data)
+
+enable_testing()
+add_test(NAME unit COMMAND unit_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME perft COMMAND vexaph perft suite)

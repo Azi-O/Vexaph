@@ -1,0 +1,11 @@
+{
+  "name": "vexaph-wasm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "./build.sh",
+    "start": "node server.js",
+    "test": "node tests/run_tests.mjs"
+  }
+}

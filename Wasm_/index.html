@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vexaph</title>
+<style>
+  :root {
+    --light: #ecdcb8;
+    --dark: #b58863;
+    --bg: #1f1d1b;
+    --panel: #2a2724;
+    --text: #efe8dc;
+    --muted: #a89f92;
+    --accent: #d9a441;
+    --sel: rgba(246, 214, 92, .62);
+    --last: rgba(205, 210, 62, .45);
+    --hint: rgba(64, 140, 230, .62);
+    --check: radial-gradient(circle, rgba(235, 50, 50, .95) 0%, rgba(235, 50, 50, .55) 45%, rgba(235, 50, 50, 0) 75%);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  main { width: min(94vw, calc(100vh - 150px), 640px); min-width: 280px; }
+  #status { min-height: 1.6em; margin: 0 0 10px; font-size: 15px; color: var(--muted); text-align: center; }
+  #status.alert { color: var(--accent); }
+  #board-wrap { position: relative; }
+  #board {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    aspect-ratio: 1;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+    user-select: none;
+    touch-action: none;
+  }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq.l { background: var(--light); }
+  .sq.d { background: var(--dark); }
+  .sq.last::before, .sq.sel::before, .sq.hint::before { content: ""; position: absolute; inset: 0; }
+  .sq.last::before { background: var(--last); }
+  .sq.sel::before { background: var(--sel); }
+  .sq.hint::before { background: var(--hint); }
+  .sq.check::after { content: ""; position: absolute; inset: 0; background: var(--check); }
+  .sq .dot { position: absolute; width: 28%; height: 28%; border-radius: 50%; background: rgba(20, 20, 20, .28); pointer-events: none; }
+  .sq .ring { position: absolute; inset: 4%; border-radius: 50%; border: 5px solid rgba(20, 20, 20, .28); pointer-events: none; }
+  .sq .co { position: absolute; font-size: clamp(9px, 1.9vmin, 12px); font-weight: 600; pointer-events: none; opacity: .85; }
+  .sq.l .co { color: var(--dark); }
+  .sq.d .co { color: var(--light); }
+  .co.rank { top: 3px; left: 4px; }
+  .co.file { bottom: 2px; right: 4px; }
+  .pc {
+    position: relative;
+    z-index: 2;
+    font-size: min(10.5vw, calc((100vh - 150px) / 8 * .84), 64px);
+    line-height: 1;
+    cursor: grab;
+    font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", "Apple Symbols", sans-serif;
+  }
+  .pc.w { color: #fbfaf6; -webkit-text-stroke: 1.2px #2a2118; paint-order: stroke fill; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+  .pc.b { color: #1d1b19; -webkit-text-stroke: .8px #0b0a09; text-shadow: 0 1px 1px rgba(255, 255, 255, .22); }
+  .pc.drag-src { opacity: .25; }
+  #ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -50%); display: none; }
+  #promo {
+    position: absolute; z-index: 20; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .45); border-radius: 4px;
+  }
+  #promo.open { display: flex; }
+  #promo .bar { display: flex; gap: 6px; padding: 10px; background: var(--panel); border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, .6); }
+  #promo button {
+    width: min(16vw, 84px); aspect-ratio: 1; border: 0; border-radius: 8px; background: var(--light); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  #promo button:hover { background: #fff3d6; }
+  #promo .pc { font-size: min(11vw, 58px); cursor: pointer; }
+  #controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+  button.btn {
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: var(--panel);
+    border: 1px solid #3d3833; border-radius: 8px; padding: 11px 6px; cursor: pointer;
+  }
+  button.btn:hover:not(:disabled) { border-color: var(--accent); }
+  button.btn:active:not(:disabled) { transform: translateY(1px); }
+  button.btn:disabled { opacity: .45; cursor: default; }
+  button.btn.on { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 420px) { button.btn { font-size: 12.5px; padding: 10px 2px; } }
+</style>
+</head>
+<body>
+<main>
+  <p id="status">Loading engine…</p>
+  <div id="board-wrap">
+    <div id="board"></div>
+    <div id="promo"><div class="bar"></div></div>
+  </div>
+  <div id="controls">
+    <button class="btn" id="b-undo" disabled>Undo</button>
+    <button class="btn" id="b-black" disabled>Play Black</button>
+    <button class="btn" id="b-white" disabled>Play White</button>
+    <button class="btn" id="b-hint" disabled>Hint</button>
+  </div>
+</main>
+<div id="ghost" class="pc"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
